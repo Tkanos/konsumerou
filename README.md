@@ -1,6 +1,6 @@
 # konsumerou 
 
-ksonsumerou is a kafka consumer router. 
+konsumerou is a kafka consumer router. 
 When you have your http endpoint on your main you have to define 2 things:
 - the route ("/mypoint" for example)
 - And an handler (that will execute the code of this endpoint)
