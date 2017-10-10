@@ -1,0 +1,15 @@
+package: github.com/tkanos/generator-consumer-kafka-go
+import:
+- package: github.com/Shopify/sarama
+- package: github.com/bsm/sarama-cluster
+- package: github.com/prometheus/client_golang
+  subpackages:
+  - prometheus
+  - prometheus/promhttp
+- package: github.com/ricardo-ch/go-tracing
+- package: github.com/spf13/viper
+testImport:
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
+  - mock

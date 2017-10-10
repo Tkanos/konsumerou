@@ -11,7 +11,7 @@ import (
 	"github.com/bsm/sarama-cluster"
 )
 
-//Handler that handler kafka messages received
+//Handler that handle kafka messages received
 type Handler func(ctx context.Context, msg *sarama.ConsumerMessage) error
 
 // listener object represents kafka customer
