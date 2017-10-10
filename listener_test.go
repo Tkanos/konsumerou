@@ -1,4 +1,4 @@
-package kafka-consumer-router
+package konsumerou
 
 import (
 	"testing"
