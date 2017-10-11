@@ -41,7 +41,7 @@ type MyServiceMessageProcessor interface {
 func MakeMyServiceEndpoint(s MyServiceMessageProcessor) konsumerou.Handler {
 	return func(ctx context.Context, msg *sarama.ConsumerMessage) error {
 		message := MyServiceMessage{}
-    if err := json.Unmarshal(msg, &message); err != nil {
+    if err := json.Unmarshal(msg.Value, &message); err != nil {
 		  return err
 	  }
 
