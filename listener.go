@@ -26,7 +26,7 @@ type Listener interface {
 }
 
 // NewListener ...
-func NewListener(brokers []string, groupID string, topicList string, offset int64) (Listener, error) {
+func NewListener(brokers []string, groupID string, topicList string, offset int64, config *cluster.Config) (Listener, error) {
 	if brokers == nil || len(brokers) == 0 {
 		return nil, errors.New("cannot create new listener, brockers cannot be empty")
 	}
@@ -38,7 +38,9 @@ func NewListener(brokers []string, groupID string, topicList string, offset int6
 	}
 
 	// Init config
-	config := cluster.NewConfig()
+	if config == nil {
+		config = cluster.NewConfig()
+	}
 
 	//config.Logger = logger //verbose mode
 	config.Consumer.Return.Errors = true

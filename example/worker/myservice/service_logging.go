@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tkanos/generator-consumer-kafka-go/config"
+	"github.com/tkanos/konsumerou/example/worker/config"
 )
 
 // myServiceLogger ...

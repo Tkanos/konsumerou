@@ -14,10 +14,10 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	zipkin "github.com/openzipkin/zipkin-go-opentracing"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/tkanos/generator-consumer-kafka-go/config"
-	"github.com/tkanos/generator-consumer-kafka-go/middleware"
-	"github.com/tkanos/generator-consumer-kafka-go/myservice"
 	"github.com/tkanos/konsumerou"
+	"github.com/tkanos/konsumerou/example/worker/config"
+	"github.com/tkanos/konsumerou/example/worker/middleware"
+	"github.com/tkanos/konsumerou/example/worker/myservice"
 )
 
 var (
@@ -94,12 +94,13 @@ func main() {
 }
 
 func myserviceEventListener(done chan bool) konsumerou.Listener {
-	//subscribe to topics
+	//subscribe to topic
+
 	listener, err := konsumerou.NewListener(
 		strings.Split(config.Config.KafkaBrokers, ";"),
 		"my-group",
 		config.Config.MyServiceKafkaTopic,
-		sarama.OffsetNewest,
+		sarama.OffsetNewest, nil,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start consumer: %s", err)
