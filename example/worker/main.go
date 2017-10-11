@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -79,9 +80,9 @@ func main() {
 		logger.Fatalln("kafka broker is empty")
 	}
 
-	//setup login failed event consumer
-	done := make(chan bool)
-	myService := myserviceEventListener(done)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	myService := myserviceEventListener(ctx)
 	defer myService.Close()
 
 	//quit application
@@ -89,12 +90,12 @@ func main() {
 	signal.Notify(sigchan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 
 	<-sigchan
-	done <- true
+	cancel()
 
 	fmt.Fprintf(os.Stdout, "the user choose to interrupt the program")
 }
 
-func myserviceEventListener(done chan bool) konsumerou.Listener {
+func myserviceEventListener(ctx context.Context) konsumerou.Listener {
 	//subscribe to topic
 
 	//create our service with tracing and logging
@@ -114,7 +115,7 @@ func myserviceEventListener(done chan bool) konsumerou.Listener {
 	clusterConfig := cluster.NewConfig()
 	clusterConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
 
-	listener, err := konsumerou.NewListener(
+	listener, err := konsumerou.NewListener(ctx,
 		strings.Split(config.Config.KafkaBrokers, ";"),
 		"my-group",
 		config.Config.MyServiceKafkaTopic,
@@ -126,7 +127,7 @@ func myserviceEventListener(done chan bool) konsumerou.Listener {
 	}
 
 	//service subscription
-	err = listener.Subscribe(done)
+	err = listener.Subscribe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start user login failed event consumer: %s", err)
 		os.Exit(-3)
