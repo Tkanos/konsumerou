@@ -11,30 +11,43 @@ import (
 	"github.com/bsm/sarama-cluster"
 )
 
-//Handler that handle kafka messages received
+// Handler that handle kafka messages received
 type Handler func(ctx context.Context, msg *sarama.ConsumerMessage) error
+
+// Handlers defines a handler for a given topic
+type Handlers map[string]Handler
 
 // listener object represents kafka customer
 type listener struct {
 	consumer *cluster.Consumer
+	handlers Handlers
 }
 
 // Listener ...
 type Listener interface {
-	Subscribe(handler Handler, exit chan bool) error
+	Subscribe(exit chan bool) error
 	Close()
 }
 
-// NewListener ...
-func NewListener(brokers []string, groupID string, topicList string, offset int64, config *cluster.Config) (Listener, error) {
+func NewListener(brokers []string, groupID string, topicList string, handler Handler, config *cluster.Config) (Listener, error) {
+	// create a map of handlers
+	handlers := make(map[string]Handler)
+	for _, topic := range strings.Split(topicList, ",") {
+		handlers[topic] = handler
+	}
+
+	return NewListenerHandlers(brokers, groupID, handlers, config)
+}
+
+func NewListenerHandlers(brokers []string, groupID string, handlers Handlers, config *cluster.Config) (Listener, error) {
 	if brokers == nil || len(brokers) == 0 {
-		return nil, errors.New("cannot create new listener, brockers cannot be empty")
+		return nil, errors.New("cannot create new listener, brokers cannot be empty")
 	}
 	if groupID == "" {
 		return nil, errors.New("cannot create new listener, groupID cannot be empty")
 	}
-	if topicList == "" {
-		return nil, errors.New("cannot create new listener, topicList cannot be empty")
+	if handlers == nil {
+		return nil, errors.New("cannot create new listener, handlers cannot be empty")
 	}
 
 	// Init config
@@ -45,20 +58,24 @@ func NewListener(brokers []string, groupID string, topicList string, offset int6
 	//config.Logger = logger //verbose mode
 	config.Consumer.Return.Errors = true
 	config.Group.Return.Notifications = true
-	config.Consumer.Offsets.Initial = offset
 
 	// Init consumer, consume errors & messages
-	consumer, err := cluster.NewConsumer(brokers, groupID, strings.Split(topicList, ","), config)
+	var topics []string
+	for k := range handlers {
+		topics = append(topics, k)
+	}
+	consumer, err := cluster.NewConsumer(brokers, groupID, topics, config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &listener{
 		consumer: consumer,
+		handlers: handlers,
 	}, nil
 }
 
-func (l *listener) Subscribe(handler Handler, exit chan bool) error {
+func (l *listener) Subscribe(exit chan bool) error {
 	if l.consumer == nil {
 		return errors.New("cannot subscribe. Customer is nil")
 	}
@@ -69,7 +86,7 @@ func (l *listener) Subscribe(handler Handler, exit chan bool) error {
 			select {
 			case msg, more := <-l.consumer.Messages():
 				if more {
-					if handler(context.Background(), msg) == nil {
+					if l.handlers[msg.Topic](context.Background(), msg) == nil {
 						l.consumer.MarkOffset(msg, "")
 					}
 				}

@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/Shopify/sarama"
+	cluster "github.com/bsm/sarama-cluster"
 	opentracing "github.com/opentracing/opentracing-go"
 	zipkin "github.com/openzipkin/zipkin-go-opentracing"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -96,16 +97,6 @@ func main() {
 func myserviceEventListener(done chan bool) konsumerou.Listener {
 	//subscribe to topic
 
-	listener, err := konsumerou.NewListener(
-		strings.Split(config.Config.KafkaBrokers, ";"),
-		"my-group",
-		config.Config.MyServiceKafkaTopic,
-		sarama.OffsetNewest, nil,
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start consumer: %s", err)
-		os.Exit(-3)
-	}
 	//create our service with tracing and logging
 	service := myservice.NewService()
 	service = myservice.NewServiceTracing(service)
@@ -118,8 +109,24 @@ func myserviceEventListener(done chan bool) konsumerou.Listener {
 	handler = middleware.NewMetricsService("myService_ProcessMessage", handler)
 	//add log middleware to service
 	handler = middleware.NewLogService(logger, handler)
+
+	// create config to handle offset
+	clusterConfig := cluster.NewConfig()
+	clusterConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
+
+	listener, err := konsumerou.NewListener(
+		strings.Split(config.Config.KafkaBrokers, ";"),
+		"my-group",
+		config.Config.MyServiceKafkaTopic,
+		handler, clusterConfig,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start consumer: %s", err)
+		os.Exit(-3)
+	}
+
 	//service subscription
-	err = listener.Subscribe(handler, done)
+	err = listener.Subscribe(done)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start user login failed event consumer: %s", err)
 		os.Exit(-3)
