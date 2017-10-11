@@ -13,7 +13,7 @@ with konsumerou it's almost the same, you give to konsumerou:
 // Create the service endpoint
 handler := myservice.MakeMyServiceEndpoint(service)
 
-listener, err := konsumerou.NewListener(
+listener, err := konsumerou.NewListener(ctx, 
 		"localhost:9092", //kafka brokers
 		"my-group",       // group id
 		"my-topic",       // the topic name

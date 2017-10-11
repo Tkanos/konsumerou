@@ -21,25 +21,35 @@ type Handlers map[string]Handler
 type listener struct {
 	consumer *cluster.Consumer
 	handlers Handlers
+	ctx      context.Context
 }
+
+const (
+	contextTopicKey     = "topic"
+	contextkeyKey       = "key"
+	contextOffsetKey    = "offset"
+	contextTimestampKey = "timestamp"
+)
 
 // Listener ...
 type Listener interface {
-	Subscribe(exit chan bool) error
+	Subscribe() error
 	Close()
 }
 
-func NewListener(brokers []string, groupID string, topicList string, handler Handler, config *cluster.Config) (Listener, error) {
+// NewListener ...
+func NewListener(ctx context.Context, brokers []string, groupID string, topicList string, handler Handler, config *cluster.Config) (Listener, error) {
 	// create a map of handlers
 	handlers := make(map[string]Handler)
 	for _, topic := range strings.Split(topicList, ",") {
 		handlers[topic] = handler
 	}
 
-	return NewListenerHandlers(brokers, groupID, handlers, config)
+	return NewListenerHandlers(ctx, brokers, groupID, handlers, config)
 }
 
-func NewListenerHandlers(brokers []string, groupID string, handlers Handlers, config *cluster.Config) (Listener, error) {
+// NewListenerHandlers ...
+func NewListenerHandlers(ctx context.Context, brokers []string, groupID string, handlers Handlers, config *cluster.Config) (Listener, error) {
 	if brokers == nil || len(brokers) == 0 {
 		return nil, errors.New("cannot create new listener, brokers cannot be empty")
 	}
@@ -48,6 +58,9 @@ func NewListenerHandlers(brokers []string, groupID string, handlers Handlers, co
 	}
 	if handlers == nil {
 		return nil, errors.New("cannot create new listener, handlers cannot be empty")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	// Init config
@@ -72,10 +85,12 @@ func NewListenerHandlers(brokers []string, groupID string, handlers Handlers, co
 	return &listener{
 		consumer: consumer,
 		handlers: handlers,
+		ctx:      ctx,
 	}, nil
 }
 
-func (l *listener) Subscribe(exit chan bool) error {
+// Subscribe ...
+func (l *listener) Subscribe() error {
 	if l.consumer == nil {
 		return errors.New("cannot subscribe. Customer is nil")
 	}
@@ -86,7 +101,12 @@ func (l *listener) Subscribe(exit chan bool) error {
 			select {
 			case msg, more := <-l.consumer.Messages():
 				if more {
-					if l.handlers[msg.Topic](context.Background(), msg) == nil {
+					ctx := context.WithValue(l.ctx, contextTopicKey, msg.Topic)
+					ctx = context.WithValue(ctx, contextkeyKey, msg.Key)
+					ctx = context.WithValue(ctx, contextOffsetKey, msg.Offset)
+					ctx = context.WithValue(ctx, contextTimestampKey, msg.Timestamp)
+
+					if l.handlers[msg.Topic](ctx, msg) == nil {
 						l.consumer.MarkOffset(msg, "")
 					}
 				}
@@ -98,7 +118,7 @@ func (l *listener) Subscribe(exit chan bool) error {
 				if more {
 					fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
 				}
-			case <-exit:
+			case <-l.ctx.Done():
 				return
 			}
 		}
