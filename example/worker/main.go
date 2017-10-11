@@ -81,7 +81,6 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	myService := myserviceEventListener(ctx)
 	defer myService.Close()
@@ -91,6 +90,7 @@ func main() {
 	signal.Notify(sigchan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 
 	<-sigchan
+	cancel()
 
 	fmt.Fprintf(os.Stdout, "the user choose to interrupt the program")
 }
