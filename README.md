@@ -10,19 +10,20 @@ with konsumerou it's almost the same, you give to konsumerou:
 - your handler that will execute the code of this endpoint
 
 ```golang
+// Create the service endpoint
+handler := myservice.MakeMyServiceEndpoint(service)
+
 listener, err := konsumerou.NewListener(
 		"localhost:9092", //kafka brokers
 		"my-group",       // group id
 		"my-topic",       // the topic name
-		sarama.OffsetNewest, //the offset
+		handler, //the handler
 		nil   // cluster config
 	)
 
-// Create the service endpoint
-handler := myservice.MakeMyServiceEndpoint(service)
 
 // Subscribe your service to the topic
-listener.Subscribe(handler, done)
+listener.Subscribe(done)
 defer listener.Close()
 ```
 
