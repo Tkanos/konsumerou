@@ -15,6 +15,7 @@ listener, err := konsumerou.NewListener(
 		"my-group",       // group id
 		"my-topic",       // the topic name
 		sarama.OffsetNewest, //the offset
+		nil   // cluster config
 	)
 
 // Create the service endpoint
