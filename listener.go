@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Shopify/sarama"
-	"github.com/bsm/sarama-cluster"
 )
 
 // Handler that handle kafka messages received
@@ -19,9 +18,10 @@ type Handlers map[string]Handler
 
 // listener object represents kafka customer
 type listener struct {
-	consumer *cluster.Consumer
+	consumer sarama.ConsumerGroup
 	handlers Handlers
 	ctx      context.Context
+	topics   []string
 }
 
 const (
@@ -38,54 +38,52 @@ type Listener interface {
 }
 
 // NewListener ...
-func NewListener(ctx context.Context, brokers []string, groupID string, topicList string, handler Handler, config *cluster.Config) (Listener, error) {
-	// create a map of handlers
-	handlers := make(map[string]Handler)
-	for _, topic := range strings.Split(topicList, ",") {
-		handlers[topic] = handler
-	}
-
-	return NewListenerHandlers(ctx, brokers, groupID, handlers, config)
-}
-
-// NewListenerHandlers ...
-func NewListenerHandlers(ctx context.Context, brokers []string, groupID string, handlers Handlers, config *cluster.Config) (Listener, error) {
+func NewListener(ctx context.Context, brokers []string, groupID string, topicList string, handler Handler, config *sarama.Config) (Listener, error) {
 	if brokers == nil || len(brokers) == 0 {
 		return nil, errors.New("cannot create new listener, brokers cannot be empty")
 	}
 	if groupID == "" {
 		return nil, errors.New("cannot create new listener, groupID cannot be empty")
 	}
-	if handlers == nil {
+	if len(topicList) == 0 {
 		return nil, errors.New("cannot create new listener, handlers cannot be empty")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
+	topics := strings.Split(topicList, ",")
+
+	// create a map of handlers
+	handlers := make(map[string]Handler)
+	for _, topic := range topics {
+		handlers[topic] = handler
+	}
+
 	// Init config
 	if config == nil {
-		config = cluster.NewConfig()
+		config = sarama.NewConfig()
 	}
 
 	//config.Logger = logger //verbose mode
 	config.Consumer.Return.Errors = true
-	config.Group.Return.Notifications = true
 
 	// Init consumer, consume errors & messages
-	var topics []string
-	for k := range handlers {
-		topics = append(topics, k)
-	}
-	consumer, err := cluster.NewConsumer(brokers, groupID, topics, config)
+	client, err := sarama.NewClient(brokers, config)
 	if err != nil {
 		return nil, err
 	}
+	consumer, err := sarama.NewConsumerGroupFromClient(groupID, client)
+	if err != nil {
+		return nil, err
+	}
+	//cluster.NewConsumer(brokers, groupID, topics, config)
 
 	return &listener{
 		consumer: consumer,
 		handlers: handlers,
 		ctx:      ctx,
+		topics:   topics,
 	}, nil
 }
 
@@ -96,35 +94,64 @@ func (l *listener) Subscribe() error {
 	}
 
 	go func() {
-		// Consume all channels, wait for signal to exit
+		// When a session is over, make consumer join a new session, as long as the context is not cancelled
 		for {
-			select {
-			case msg, more := <-l.consumer.Messages():
-				if more {
-					ctx := context.WithValue(l.ctx, contextTopicKey, msg.Topic)
-					ctx = context.WithValue(ctx, contextkeyKey, msg.Key)
-					ctx = context.WithValue(ctx, contextOffsetKey, msg.Offset)
-					ctx = context.WithValue(ctx, contextTimestampKey, msg.Timestamp)
-
-					if l.handlers[msg.Topic](ctx, msg) == nil {
-						l.consumer.MarkOffset(msg, "")
-					}
-				}
-			case ntf, more := <-l.consumer.Notifications():
-				if more {
-					fmt.Fprintf(os.Stdout, "Rebalanced: %+v\n", ntf)
-				}
-			case err, more := <-l.consumer.Errors():
-				if more {
-					fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
-				}
-			case <-l.ctx.Done():
+			// Consume make this consumer join the next session
+			// This block until the `session` is over. (basically until next rebalance)
+			err := l.consumer.Consume(l.ctx, l.topics, l)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
+			}
+			if err := l.ctx.Err(); err != nil {
+				// Check if context is cancelled
 				return
 			}
 		}
 	}()
 
 	return nil
+}
+
+// ConsumerGroupHandler instances are used to handle individual topic/partition claims.
+// It also provides hooks for your consumer group session life-cycle and allow you to
+// trigger logic before or after the consume loop(s).
+//
+// PLEASE NOTE that handlers are likely be called from several goroutines concurrently,
+// ensure that all state is safely protected against race conditions.
+
+// Setup is run at the beginning of a new session, before ConsumeClaim
+func (l *listener) Setup(sarama.ConsumerGroupSession) error {
+	// Mark the consumer as ready
+	return nil
+}
+
+// Cleanup is run at the end of a session, once all ConsumeClaim goroutines have exited
+func (l *listener) Cleanup(sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+// ConsumeClaim must start a consumer loop of ConsumerGroupClaim's Messages().
+func (l *listener) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for msg := range claim.Messages() {
+		l.onNewMessage(msg, session)
+	}
+	return nil
+}
+
+func (l *listener) onNewMessage(msg *sarama.ConsumerMessage, session sarama.ConsumerGroupSession) {
+	ctx := context.WithValue(l.ctx, contextTopicKey, msg.Topic)
+	ctx = context.WithValue(ctx, contextkeyKey, msg.Key)
+	ctx = context.WithValue(ctx, contextOffsetKey, msg.Offset)
+	ctx = context.WithValue(ctx, contextTimestampKey, msg.Timestamp)
+
+	err := l.handlers[msg.Topic](ctx, msg)
+
+	if err != nil {
+		// error should be handle on the handler
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
+	}
+
+	session.MarkMessage(msg, "")
 }
 
 func (l *listener) Close() {

@@ -12,9 +12,6 @@ import (
 	"syscall"
 
 	"github.com/Shopify/sarama"
-	cluster "github.com/bsm/sarama-cluster"
-	opentracing "github.com/opentracing/opentracing-go"
-	zipkin "github.com/openzipkin/zipkin-go-opentracing"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tkanos/konsumerou"
 	"github.com/tkanos/konsumerou/example/worker/config"
@@ -37,32 +34,32 @@ func init() {
 func main() {
 
 	// Tracing domain.
-	var tracer opentracing.Tracer
-	{
-		zipkinAddr := config.Config.ZipkinURI
-		if zipkinAddr != "" {
-			//create a collector
-			collector, err := zipkin.NewHTTPCollector(zipkinAddr)
-			if err != nil {
-				logger.Fatal("Unable to create a zipkin collector : ", err)
-			}
-			defer collector.Close()
+	//var tracer opentracing.Tracer
+	//{
+	//zipkinAddr := config.Config.ZipkinURI
+	//if zipkinAddr != "" {
+	//create a collector
+	//collector, err := zipkin.NewHTTPCollector(zipkinAddr)
+	//if err != nil {
+	//	logger.Fatal("Unable to create a zipkin collector : ", err)
+	//}
+	//defer collector.Close()
 
-			tracer, err = zipkin.NewTracer(
-				zipkin.NewRecorder(collector, true, "kafka-consumer:"+strconv.Itoa(config.Config.Port), "kafka-consumer"),
-				zipkin.TraceID128Bit(true),
-			)
-			if err != nil {
-				logger.Fatal("Unbale to create a Zipkin Tracer : ", err)
-			}
+	//tracer, err = zipkin.NewTracer(
+	//	zipkin.NewRecorder(collector, true, "kafka-consumer:"+strconv.Itoa(config.Config.Port), "kafka-consumer"),
+	//	zipkin.TraceID128Bit(true),
+	//)
+	//if err != nil {
+	//	logger.Fatal("Unbale to create a Zipkin Tracer : ", err)
+	//}
 
-			// explicitly set our tracer to be the default tracer.
-			opentracing.SetGlobalTracer(tracer)
+	// explicitly set our tracer to be the default tracer.
+	//opentracing.SetGlobalTracer(tracer)
 
-		} else {
-			tracer = opentracing.GlobalTracer() // no-op
-		}
-	}
+	//} else {
+	//tracer = opentracing.GlobalTracer() // no-op
+	//}
+	//}
 
 	// create web server just for the /healthz
 	httpAddr := ":" + strconv.Itoa(config.Config.Port)
@@ -100,7 +97,7 @@ func myserviceEventListener(ctx context.Context) konsumerou.Listener {
 
 	//create our service with tracing and logging
 	service := myservice.NewService()
-	service = myservice.NewServiceTracing(service)
+	//service = myservice.NewServiceTracing(service)
 	service = myservice.NewServiceLogging(service)
 
 	//ProcessMessage endpoint
@@ -112,14 +109,14 @@ func myserviceEventListener(ctx context.Context) konsumerou.Listener {
 	handler = middleware.NewLogService(logger, handler)
 
 	// create config to handle offset
-	clusterConfig := cluster.NewConfig()
-	clusterConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
+	sconfig := sarama.NewConfig()
+	sconfig.Consumer.Offsets.Initial = sarama.OffsetNewest
 
 	listener, err := konsumerou.NewListener(ctx,
 		strings.Split(config.Config.KafkaBrokers, ";"),
 		"my-group",
 		config.Config.MyServiceKafkaTopic,
-		handler, clusterConfig,
+		handler, sconfig,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start consumer: %s", err)

@@ -24,9 +24,3 @@ func Test_NewListener_EmptyTopicList(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, listener)
 }
-
-func Test_NewListenerHandlers_EmptyHandlers(t *testing.T) {
-	l, err := NewListenerHandlers(context.Background(), []string{"brocker1", "brocker2"}, "groupID", nil, nil)
-	assert.Error(t, err)
-	assert.Nil(t, l)
-}

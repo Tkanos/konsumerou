@@ -1,5 +1,6 @@
 package myservice
 
+/*
 import (
 	"context"
 
@@ -30,3 +31,4 @@ func (s MyServiceTracing) ProcessMessage(ctx context.Context, msg *MyServiceMess
 
 	return s.next.ProcessMessage(ctx, msg)
 }
+*/
